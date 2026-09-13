@@ -65,6 +65,7 @@ class SessionStore:
         self.conn.executescript(SCHEMA)
         # 旧库升级
         for stmt in ("ALTER TABLE sessions ADD COLUMN summary TEXT DEFAULT ''",
+                     "ALTER TABLE sessions ADD COLUMN card_id TEXT DEFAULT ''",
                      "ALTER TABLE messages ADD COLUMN kind TEXT DEFAULT 'chat'",
                      "ALTER TABLE facts ADD COLUMN kind TEXT DEFAULT 'event'",
                      "ALTER TABLE facts ADD COLUMN weight REAL DEFAULT 1.0",
@@ -76,14 +77,32 @@ class SessionStore:
                 pass
         self.conn.commit()
 
-    def create_session(self, title=""):
+    def create_session(self, title="", card_id=""):
         with self.lock:
             now = _now()
             cur = self.conn.execute(
-                "INSERT INTO sessions (title, created, updated) VALUES (?,?,?)",
-                (title, now, now))
+                "INSERT INTO sessions (title, created, updated, card_id) "
+                "VALUES (?,?,?,?)", (title, now, now, card_id))
             self.conn.commit()
             return cur.lastrowid
+
+    def get_session_card(self, session_id):
+        with self.lock:
+            row = self.conn.execute("SELECT card_id FROM sessions WHERE id=?",
+                                    (session_id,)).fetchone()
+        return (row[0] or "") if row else ""
+
+    def latest_session(self, card_id=None):
+        """某卡片最近更新的会话 id；card_id 为 None 时不限卡片。无则 None。"""
+        with self.lock:
+            if card_id is None:
+                row = self.conn.execute(
+                    "SELECT id FROM sessions ORDER BY updated DESC LIMIT 1").fetchone()
+            else:
+                row = self.conn.execute(
+                    "SELECT id FROM sessions WHERE card_id=? "
+                    "ORDER BY updated DESC, id DESC LIMIT 1", (card_id,)).fetchone()
+        return row[0] if row else None
 
     def set_summary(self, session_id, summary):
         with self.lock:
@@ -300,10 +319,15 @@ class SessionStore:
                     "SELECT text FROM facts WHERE session_id=?", (session_id,)).fetchall()
         return [r[0] for r in rows]
 
-    def list_sessions(self):
+    def list_sessions(self, card_id=None):
         with self.lock:
+            if card_id is None:
+                return self.conn.execute(
+                    "SELECT id, title, created, updated FROM sessions "
+                    "ORDER BY updated DESC").fetchall()
             return self.conn.execute(
-                "SELECT id, title, created, updated FROM sessions ORDER BY updated DESC").fetchall()
+                "SELECT id, title, created, updated FROM sessions WHERE card_id=? "
+                "ORDER BY updated DESC", (card_id,)).fetchall()
 
     def close(self):
         with self.lock:

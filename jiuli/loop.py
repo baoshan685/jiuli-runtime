@@ -8,7 +8,7 @@ from pathlib import Path
 
 from jiuli.context import ContextAssembler, est_tokens
 from jiuli.memory import MemoryStore, heuristic_extract_facts
-from jiuli.parser import parse_output
+from jiuli.parser import extract_statusbar, parse_output
 from jiuli.retriever import WorldbookRetriever
 from jiuli.session import SessionStore
 from jiuli.state import StateMachine
@@ -22,6 +22,9 @@ DEFAULT_INSTRUCTION = (
     "memory_facts（本回合**实际发生**的、值得角色长期记住的事实数组——"
     "只记录本回合发生的事，禁止虚构此前未发生的剧情；没有则空数组）、"
     "suggestions（3 个剧情建议）。尾部块之外只输出叙事正文。"
+    "若【设定】中包含状态栏格式要求（如 <userStatusBlocks> 等标签包裹的块），"
+    "则每一轮都【必须】在叙事正文之后、尾部块之前，严格按该格式输出完整状态栏块，"
+    "不得省略。运行时会渲染它。"
 )
 
 
@@ -38,6 +41,23 @@ class CardPackage:
         sm = json.loads((pkg / "state_machine.json").read_text(encoding="utf-8"))
         self.state_machine = StateMachine(sm)
         self.retriever = WorldbookRetriever(pkg)
+        # 常驻条目：等同预设，每轮固定注入（P0 实验原则的"始终注入"半边，
+        # 此前只有"不参与检索"半边——状态栏指令/常驻世界规则因此丢失）
+        self.constant_entries = [
+            (e["id"], e.get("content", ""))
+            for e in self.retriever_entries_all()
+        ]
+
+    def retriever_entries_all(self):
+        """全部条目（含常驻），从 index+文件重建。"""
+        import json as _json
+        index = _json.loads((self.dir / "worldbook" / "index.json").read_text(encoding="utf-8"))
+        out = []
+        for e in index["entries"]:
+            if e["constant"] and e["enabled"]:
+                content = (self.dir / "worldbook" / e["content_file"]).read_text(encoding="utf-8")
+                out.append(dict(e, content=content))
+        return out
 
 
 def _make_nli(llm):
@@ -58,7 +78,7 @@ def _make_nli(llm):
 
 class RPSession:
     def __init__(self, pkg_dir, llm, db_path, session_id=None,
-                 token_budget=4000, fact_extractor=None):
+                 token_budget=4000, fact_extractor=None, card_id=""):
         self.pkg = CardPackage(pkg_dir)
         self.llm = llm
         self.store = SessionStore(db_path)
@@ -72,7 +92,8 @@ class RPSession:
             token_budget=token_budget)
         self.extractor = fact_extractor or heuristic_extract_facts
         if session_id is None:
-            self.session_id = self.store.create_session(title=self.pkg.persona.get("name", ""))
+            self.session_id = self.store.create_session(
+                title=self.pkg.persona.get("name", ""), card_id=card_id)
             self.store.set_state(self.session_id, self.pkg.state_machine.initial_state())
         else:
             self.session_id = session_id
@@ -179,8 +200,10 @@ class RPSession:
         """检索 + 组装，供非流式/流式共用。返回 (system, prep)。"""
         history = self.store.recent_messages(self.session_id)
         hits = self.pkg.retriever.search(user_input, topk=6)
-        wb = [(eid, s, (self.pkg.retriever.get(eid) or {}).get("content", ""))
-              for eid, s in hits]
+        # 常驻条目置顶（高分保证排最前），检索命中随后
+        wb = ([(eid, 9999.0, content) for eid, content in self.pkg.constant_entries]
+              + [(eid, s, (self.pkg.retriever.get(eid) or {}).get("content", ""))
+                 for eid, s in hits])
         mem = self.memory.search(user_input, topk=4) or self.memory.recent(3)
         total = self.store.count_messages(self.session_id)
         older = max(0, total - len(history))
@@ -214,8 +237,10 @@ class RPSession:
             stats = self.memory.add(self.session_id, facts, context=user_input)
             self._last_added_fact_ids.extend(stats.get("added_ids", []))
 
+        narrative, statusbar = extract_statusbar(narrative)
         return {
             "narrative": narrative,
+            "statusbar": statusbar,
             "state": dict(self._state),
             "applied": applied,
             "rejected": rejected,

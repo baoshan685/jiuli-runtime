@@ -16,6 +16,12 @@ h1 .sub{font-size:11px;color:var(--dim)}
 button{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:13px}
 button:hover{border-color:var(--acc)}
 button.primary{background:var(--acc);border-color:var(--acc);color:#141414;font-weight:600}
+.card{padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;border:1px solid var(--line);margin-bottom:6px}
+.card:hover{border-color:var(--acc)}
+.card.on{border-color:var(--acc);background:var(--card)}
+.card b{font-weight:600}
+.card .bio{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#statusbar{white-space:pre-wrap;font-size:12px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px;max-height:300px;overflow-y:auto}
 .sess{padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--dim);border:1px solid transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sess:hover,.sess.on{background:var(--card);color:var(--fg);border-color:var(--line)}
 #chat{flex:1;overflow-y:auto;padding:22px 8%;display:flex;flex-direction:column;gap:16px}
@@ -52,6 +58,9 @@ label{font-size:12px;color:var(--dim)}
   <button onclick="forkSession()">⑂ 从当前位置分叉</button>
   <button onclick="openGallery()">🖼 插图画廊</button>
   <div class="spacer"></div>
+  <h3>角色卡</h3>
+  <div id="cardlist"></div>
+  <div class="spacer"></div>
   <h3>存档</h3>
   <div id="sesslist"></div>
   <div class="spacer"></div>
@@ -69,6 +78,7 @@ label{font-size:12px;color:var(--dim)}
 <div class="right">
   <h3>角色</h3><div class="kv" id="charinfo"></div>
   <h3>状态面板</h3><div id="statepanel" class="kv">（尚无状态变化）</div>
+  <h3>状态栏</h3><div id="statusbar" class="kv">（本卡无状态栏输出）</div>
   <h3>本回合命中</h3><div id="hits" class="kv">—</div>
   <h3>场景插图</h3><div id="illu"></div>
   <h3>主动性</h3><button style="width:100%" onclick="triggerProactive()">⚡ 让角色现在就找你</button><div class="kv" id="proactiveinfo"></div>
@@ -76,7 +86,7 @@ label{font-size:12px;color:var(--dim)}
 
 <div id="modal"><div class="box">
   <h1 style="margin-bottom:10px">⚙ 模型设置</h1>
-  <label>API Base（OpenAI 兼容）</label><input id="m_base" placeholder="https://api.xxx.com/v1">
+  <label>API Base（OpenAI 兼容；漏写 /v1 会自动补全）</label><input id="m_base" placeholder="https://api.xxx.com/v1">
   <label>API Key</label><input id="m_key" type="password">
   <label>模型</label><input id="m_model" placeholder="模型名">
   <div class="row2">
@@ -93,26 +103,44 @@ label{font-size:12px;color:var(--dim)}
 <div id="gallery"></div>
 
 <script>
-let SID=null, LASTRESULT=null, lastMsgId=0;
+let SID=null, LASTRESULT=null, lastMsgId=0, activeCard=null;
 const $=id=>document.getElementById(id);
 const esc=s=>(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;");
 async function jget(u){const r=await fetch(u);return r.json()}
 async function jpost(u,b){const r=await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b||{})});return r.json()}
 
 async function init(){
-  const info=await jget("/api/info");
-  $("charinfo").textContent=(info.persona.name||"")+" · "+(info.persona.bio||"");
-  const s=await jget("/api/sessions");
-  SID=s.current; renderSessions(s.sessions);
+  await loadCards();
+  await refreshSessions();
   await loadMessages();
+}
+async function loadCards(){
+  const r=await jget("/api/cards");
+  if(!activeCard) activeCard=r.default_card;
+  $("cardlist").innerHTML=(r.cards||[]).map(c=>
+    `<div class="card ${c.id===activeCard?"on":""}" onclick="switchCard('${c.id}')"><b>${esc(c.name)}</b><div class="bio">${esc(c.bio)}（${c.session_count}存档）</div></div>`).join("");
+  const cur=(r.cards||[]).find(c=>c.id===activeCard);
+  if(cur)$("charinfo").textContent=cur.name+" · "+cur.bio;
+}
+async function switchCard(id){
+  activeCard=id; SID=null;
+  await loadCards(); await refreshSessions(); await loadMessages();
 }
 function renderSessions(list){
   $("sesslist").innerHTML=(list||[]).map(x=>
     `<div class="sess ${x[0]==SID?"on":""}" onclick="switchTo(${x[0]})">#${x[0]} ${esc(x[1]||"（未命名）")}</div>`).join("");
 }
 async function switchTo(id){SID=id;await loadMessages();refreshSessions()}
-async function refreshSessions(){const s=await jget("/api/sessions");renderSessions(s.sessions)}
-async function newSession(){const r=await jpost("/api/sessions",{});SID=r.session_id;await loadMessages();refreshSessions()}
+async function refreshSessions(){
+  const q=activeCard?("/api/sessions?card_id="+encodeURIComponent(activeCard)):"/api/sessions";
+  const s=await jget(q);
+  SID=s.current;
+  renderSessions(s.sessions);
+}
+async function newSession(){
+  const r=await jpost("/api/sessions",{card_id:activeCard});
+  SID=r.session_id;await loadMessages();refreshSessions();
+}
 async function forkSession(){const r=await jpost("/api/fork",{session_id:SID});if(r.session_id){SID=r.session_id;await loadMessages();refreshSessions()}}
 
 function bubble(role,text,meta){
@@ -156,6 +184,9 @@ function renderState(st){
   const e=Object.entries(st||{});
   $("statepanel").innerHTML=e.length?e.map(([k,v])=>`<div class="state-row"><span>${esc(k)}</span><b>${esc(String(v))}</b></div>`).join(""):"（尚无状态变化）";
 }
+function renderStatusbar(sb){
+  $("statusbar").innerHTML=sb?esc(sb):"（本轮无状态栏输出）";
+}
 function renderHits(r){
   $("hits").innerHTML=`ctx≈${r.ctx_tokens_est} tok · wb: ${(r.wb_hits||[]).map(h=>`<span class="tag">${esc(h)}</span>`).join("")} · mem:${r.mem_hits}`;
   $("illu").innerHTML=r.illustration?`<img class="illu" src="/api/illustration/file?name=${encodeURIComponent(r.illustration)}" onerror="this.style.display='none'">`:"";
@@ -183,7 +214,7 @@ async function send(){
         if(ev.type==="error"){holder.textContent="（错误）"+ev.message}
       }
     }
-    if(done){LASTRESULT=done;holder.innerHTML=esc(done.narrative)+metaOf(done);renderState(done.state);renderHits(done);addSugg(done)}
+    if(done){LASTRESULT=done;holder.innerHTML=esc(done.narrative)+metaOf(done);renderState(done.state);renderHits(done);renderStatusbar(done.statusbar);addSugg(done)}
   }catch(e){holder.textContent="（请求失败）"+e}
 }
 function metaOf(r){
@@ -224,7 +255,7 @@ async function saveModel(){
 }
 async function testModel(){
   const r=await jpost("/api/model/test",{});
-  $("testres").textContent=r.ok?"连通 ✔ "+(r.reply||""):"失败: "+(r.error||JSON.stringify(r));
+  $("testres").textContent=r.ok?("连通 ✔ "+(r.reply||"")+(r.resolved_base?" （端点: "+r.resolved_base+"）":"")):"失败: "+(r.error||JSON.stringify(r));
 }
 async function probeOllama(){
   const r=await jget("/api/ollama");

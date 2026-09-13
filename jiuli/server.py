@@ -38,28 +38,78 @@ from urllib.parse import urlparse, parse_qs
 from jiuli.llm import MockLLM, OpenAICompatClient
 from jiuli.loop import RPSession
 from jiuli.scheduler import ProactiveEngine
+from jiuli.session import SessionStore
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 
 class App:
-    """共享状态：pkg/llm/store/会话实例表 + 每会话写锁。"""
+    """共享状态：多卡片 / llm / store / 会话实例表 + 每会话写锁。"""
 
     def __init__(self, pkg_dir, llm, db_path, token_budget=4000):
-        self.pkg_dir = pkg_dir
+        pkg_dirs = [pkg_dir] if isinstance(pkg_dir, (str, Path)) else list(pkg_dir)
         self.llm = llm
         self.db_path = db_path
         self.token_budget = token_budget
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # 可重入：session_for_card 会嵌套调 session()
         self._sessions = {}     # session_id -> RPSession
         self._locks = {}        # session_id -> threading.Lock
-        probe = RPSession(pkg_dir, llm, db_path, token_budget=token_budget)
-        self.default_session_id = probe.session_id
-        self._sessions[probe.session_id] = probe
+
+        # 多卡片：card_id -> {"dir", "pkg"}；CardPackage 含检索器，加载快
+        from jiuli.loop import CardPackage
+        self.cards = {}
+        for d in pkg_dirs:
+            cp = CardPackage(d)
+            cid = cp.manifest.get("skill_name") or Path(d).name
+            self.cards[cid] = {"dir": Path(d), "pkg": cp}
+        self.default_card = next(iter(self.cards))
+
+        # 复用每张卡最近会话，避免每次重启都造空会话；无历史才新建
+        probe_store = self.cards[self.default_card]["pkg"].dir  # 仅取目录占位
+        first = RPSession(self.cards[self.default_card]["dir"], llm, db_path,
+                          session_id=self._latest_or_none(self.default_card),
+                          token_budget=token_budget, card_id=self.default_card)
+        self.default_session_id = first.session_id
+        self._sessions[first.session_id] = first
         self.engine = ProactiveEngine(
             lambda: list(self._sessions.values()),
             lock_provider=lambda s: self._locks.setdefault(
                 s.session_id, threading.Lock()))
+
+    def _latest_or_none(self, card_id):
+        store = self._any_store()
+        sid = store.latest_session(card_id)
+        return sid
+
+    def _any_store(self):
+        """同一 db_path，任意 RPSession 的 store 均可；没有则临时建一个。"""
+        if self._sessions:
+            return next(iter(self._sessions.values())).store
+        return SessionStore(self.db_path)
+
+    def cards_info(self):
+        return [{"id": cid,
+                 "name": c["pkg"].persona.get("name", cid),
+                 "bio": c["pkg"].persona.get("bio", ""),
+                 "session_count": len(self._any_store().list_sessions(cid))}
+                for cid, c in self.cards.items()]
+
+    def session_for_card(self, card_id=None, sid=None):
+        """取某卡片的会话：显式 sid 优先；否则该卡最近会话；再否则新建。"""
+        card_id = card_id or self.default_card
+        if card_id not in self.cards:
+            raise KeyError("unknown card: %s" % card_id)
+        with self._lock:
+            if sid is not None:
+                return self.session(sid)
+            existing = self._any_store().latest_session(card_id)
+            if existing is not None:
+                return self.session(existing)
+            s = RPSession(self.cards[card_id]["dir"], self.llm, self.db_path,
+                          token_budget=self.token_budget, card_id=card_id)
+            self._sessions[s.session_id] = s
+            self._locks.setdefault(s.session_id, threading.Lock())
+            return s, self._locks[s.session_id]
 
     def session(self, sid=None):
         with self._lock:
@@ -67,8 +117,14 @@ class App:
                 sid = self.default_session_id
             sid = int(sid)
             if sid not in self._sessions:
-                s = RPSession(self.pkg_dir, self.llm, self.db_path,
-                              session_id=sid, token_budget=self.token_budget)
+                # 历史会话必须按它自己的 card_id 找回对应的包（串角色防护）
+                store = self._any_store()
+                card_id = store.get_session_card(sid) or self.default_card
+                if card_id not in self.cards:
+                    card_id = self.default_card
+                s = RPSession(self.cards[card_id]["dir"], self.llm,
+                              self.db_path, session_id=sid,
+                              token_budget=self.token_budget)
                 self._sessions[sid] = s
             if sid not in self._locks:
                 self._locks[sid] = threading.Lock()
@@ -115,9 +171,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"persona": p.persona,
                                    "manifest": p.manifest,
                                    "state": p.state_machine.initial_state()})
+            if u.path == "/api/cards":
+                return self._json({"cards": self.app.cards_info(),
+                                   "default_card": self.app.default_card})
             if u.path == "/api/sessions":
-                s, _ = self.app.session(q.get("session_id", [None])[0])
-                return self._json({"sessions": s.store.list_sessions(),
+                card_id = (q.get("card_id", [None])[0]
+                           or q.get("session_id", [None])[0] and None) or None
+                s, _ = self.app.session_for_card(card_id, q.get("session_id", [None])[0])
+                return self._json({"sessions": s.store.list_sessions(card_id),
                                    "current": s.session_id})
             if u.path == "/api/messages":
                 s, _ = self.app.session(q.get("session_id", [None])[0])
@@ -196,10 +257,22 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/turn_stream":
                 return self._post_turn_stream(body)
             if u.path == "/api/sessions":
-                s, _ = self.app.session(None)
-                sid = s.store.create_session(title=body.get("title", ""))
-                s.store.set_state(sid, s.pkg.state_machine.initial_state())
-                return self._json({"session_id": sid})
+                card_id = body.get("card_id") or self.app.default_card
+                if card_id not in self.app.cards:
+                    return self._json({"error": "unknown card"}, 400)
+                s, lock = self.app.session_for_card(card_id)
+                with lock:
+                    sid = s.store.create_session(title=body.get("title", ""),
+                                                 card_id=card_id)
+                    s.store.set_state(sid, s.pkg.state_machine.initial_state())
+                # 新会话立刻挂到运行时实例上，保证后续 turn/poll 命中它
+                with self.app._lock:
+                    ns = RPSession(self.app.cards[card_id]["dir"], self.app.llm,
+                                   self.app.db_path, session_id=sid,
+                                   token_budget=self.app.token_budget,
+                                   card_id=card_id)
+                    self.app._sessions[sid] = ns
+                return self._json({"session_id": sid, "card_id": card_id})
             if u.path == "/api/reroll":
                 s = self.app._sessions.get(int(body.get("session_id", 0)))
                 if not s:
@@ -221,9 +294,16 @@ class Handler(BaseHTTPRequestHandler):
                 cfg = self.app.llm
                 if isinstance(cfg, MockLLM):
                     return self._json({"ok": True, "reply": "(mock)"})
-                reply = cfg.chat("你只回复两个字：成功",
-                                 [{"role": "user", "content": "ping"}], max_tokens=512)
-                return self._json({"ok": bool(reply.strip()), "reply": reply.strip()[:40]})
+                try:
+                    reply = cfg.chat("你只回复两个字：成功",
+                                     [{"role": "user", "content": "ping"}], max_tokens=512)
+                except urllib.error.HTTPError as e:
+                    hint = "（已尝试自动补 /v1）" if not (cfg.base_url or "").endswith("/v1") else ""
+                    return self._json({"ok": False,
+                                       "error": "HTTP %d %s %s" % (e.code, e.reason, hint)})
+                return self._json({"ok": bool(reply.strip()),
+                                   "reply": reply.strip()[:40],
+                                   "resolved_base": cfg.base_url})
             if u.path == "/api/proactive/config":
                 s, _ = self.app.session(body.get("session_id"))
                 cfg = self.app.engine.set_config(s, body)
@@ -237,10 +317,25 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             return self._json({"error": str(e)}, 500)
 
+    @staticmethod
+    def _friendly_llm_error(e):
+        if isinstance(e, urllib.error.HTTPError):
+            if e.code == 402:
+                return "HTTP 402: 当前模型额度不足/欠费（免费模型额度每日 0 点刷新）。"                        "请在「模型设置」里换一个模型。"
+            if e.code == 401:
+                return "HTTP 401: API Key 无效或未授权，请检查「模型设置」。"
+            if e.code == 429:
+                return "HTTP 429: 触发限流，请稍后重试或降低请求频率。"
+            return "HTTP %d: %s" % (e.code, e.reason)
+        return str(e)
+
     def _post_turn(self, body):
         s, lock = self.app.session(body.get("session_id"))
         with lock:
-            r = s.run_turn(body.get("input", ""))
+            try:
+                r = s.run_turn(body.get("input", ""))
+            except urllib.error.HTTPError as e:
+                return self._json({"error": self._friendly_llm_error(e)}, 502)
         return self._json(r)
 
     def _post_turn_stream(self, body):
@@ -262,13 +357,14 @@ class Handler(BaseHTTPRequestHandler):
                 for ev in s.run_turn_stream(body.get("input", "")):
                     send(ev)
             except Exception as e:  # noqa: BLE001
-                send({"type": "error", "message": str(e)})
+                send({"type": "error", "message": self._friendly_llm_error(e)})
         self.wfile.write(b"data: [DONE]\n\n")
 
 
 def main():
     ap = argparse.ArgumentParser(prog="jiuli-server")
-    ap.add_argument("--pkg", required=True)
+    ap.add_argument("--pkg", required=True, action="append",
+                    help="卡片语义包目录，可重复传入多张卡")
     ap.add_argument("--db", default="jiuli.db")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8770)
@@ -301,8 +397,9 @@ def main():
                 pass
 
     threading.Thread(target=scheduler_loop, daemon=True).start()
-    print("酒醴 Web UI: http://%s:%d  (pkg=%s, mock=%s, 调度间隔=%ds)"
-          % (args.host, args.port, args.pkg, args.mock, args.tick_seconds))
+    print("酒醴 Web UI: http://%s:%d  (cards=%s, mock=%s, 调度间隔=%ds)"
+          % (args.host, args.port, ",".join(app.cards), args.mock,
+             args.tick_seconds))
     server.serve_forever()
 
 

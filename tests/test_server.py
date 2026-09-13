@@ -152,5 +152,51 @@ class TestServerIsolation(ServerFixture):
         self.assertTrue(r["ok"])  # mock 模式直接返回 ok
 
 
+class TestMultiCardAndStatusbar(ServerFixture):
+    """双卡片 + 状态栏面板的端到端。"""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+        pkg2 = make_pkg(self.tmp, "card_package-demo2")
+        import json as _json
+        persona = _json.loads((pkg2 / "persona.json").read_text(encoding="utf-8"))
+        persona["name"] = "阿灰"
+        (pkg2 / "persona.json").write_text(
+            _json.dumps(persona, ensure_ascii=False), encoding="utf-8")
+        mf = _json.loads((pkg2 / "manifest.json").read_text(encoding="utf-8"))
+        mf["skill_name"] = "rp-demo2"
+        (pkg2 / "manifest.json").write_text(_json.dumps(mf), encoding="utf-8")
+        app = App([make_pkg(self.tmp), pkg2], MockLLM(),
+                  str(Path(self.tmp) / "mc.db"), token_budget=4000)
+
+        class H(Handler):
+            pass
+        H.app = app
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.port = self.httpd.server_address[1]
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.stop_server()
+
+    def test_cards_listed_and_switchable(self):
+        _, r = api_call(self.port, "GET", "/api/cards")
+        self.assertEqual(len(r["cards"]), 2)
+        ids = {c["id"] for c in r["cards"]}
+        # 给第二张卡开新会话并说话
+        _, created = api_call(self.port, "POST", "/api/sessions",
+                              {"card_id": next(i for i in ids if "demo2" in i)})
+        _, turn = api_call(self.port, "POST", "/api/turn",
+                           {"session_id": created["session_id"], "input": "hi"})
+        self.assertEqual(turn["state"]["affection"], 1)
+        # 该卡的会话列表应包含新会话且 current 指向它
+        target = next(i for i in ids if "demo2" in i)
+        _, sess = api_call(self.port, "GET", "/api/sessions?card_id=" + target)
+        self.assertEqual(sess["current"], created["session_id"])
+        self.assertIn(created["session_id"], [x[0] for x in sess["sessions"]])
+
+
 if __name__ == "__main__":
     unittest.main()

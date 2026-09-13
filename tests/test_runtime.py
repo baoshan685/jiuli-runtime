@@ -313,6 +313,9 @@ def make_pkg2(tmp):
     persona["name"] = "阿灰"
     persona["bio"] = "修表铺的沉默学徒。"
     (pkg / "persona.json").write_text(json.dumps(persona, ensure_ascii=False), encoding="utf-8")
+    mf = json.loads((pkg / "manifest.json").read_text(encoding="utf-8"))
+    mf["skill_name"] = "rp-demo2"
+    (pkg / "manifest.json").write_text(json.dumps(mf), encoding="utf-8")
     idx_p = pkg / "worldbook" / "index.json"
     idx = json.loads(idx_p.read_text(encoding="utf-8"))
     idx["entries"][0]["keys"] = ["修表铺", "怀表"]
@@ -511,5 +514,21 @@ class TestP5Fixes(unittest.TestCase):
         self.assertNotIn(ghost_id, by_id, "被 roll 掉回合的事实应已停用")
 
 
-if __name__ == "__main__":
-    unittest.main()
+class TestStatusbarExtract(unittest.TestCase):
+    def test_tag_block_extracted(self):
+        from jiuli.parser import extract_statusbar
+        text = '正文。\n<userStatusBlocks>好感: 10</userStatusBlocks>'
+        clean, sb = extract_statusbar(text)
+        self.assertEqual(clean, '正文。')
+        self.assertIn('好感', sb)
+
+    def test_fence_extracted(self):
+        from jiuli.parser import extract_statusbar
+        clean, sb = extract_statusbar('正文\n```status\nHP 80\n```')
+        self.assertEqual(clean, '正文')
+        self.assertEqual(sb, 'HP 80')
+
+    def test_no_block(self):
+        from jiuli.parser import extract_statusbar
+        clean, sb = extract_statusbar('普通正文')
+        self.assertIsNone(sb)

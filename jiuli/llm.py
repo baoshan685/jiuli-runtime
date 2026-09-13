@@ -5,15 +5,53 @@ RP 每轮只调用一次模型（生成 + 结构化尾部同输出），
 不做多步 agent 循环——这是瘦上下文成本承诺的架构前提。
 """
 import json
+import urllib.error
 import urllib.request
 
 
 class OpenAICompatClient:
     def __init__(self, base_url, api_key, model, timeout=120):
-        self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
         self.timeout = timeout
+        # base_url 允许三种写法：host、host/v1、host/v1/（见 _endpoint 的自动纠正）
+        self.base_url = base_url.strip().rstrip("/") if base_url else ""
+
+    def _endpoint(self, path):
+        """拼端点；用户漏写 /v1 时自动补上（记录是否已纠正，供提示）。
+
+        判据：404 且 base 尾段不是版本号（v1/v2/beta等）→ 补 /v1 重试。
+        这里先生成候选端点序列。
+        """
+        bases = [self.base_url]
+        tail = self.base_url.rsplit("/", 1)[-1].lower()
+        if tail not in ("v1", "v2", "v3", "beta", "openai"):
+            bases.append(self.base_url + "/v1")
+        return [b + path for b in bases]
+
+    def _post(self, path, payload, stream=False):
+        """POST，带 /v1 自动纠正。返回 (resp, resolved_base)。"""
+        data = json.dumps(payload).encode("utf-8")
+        last_err = None
+        for base in [self.base_url] + (
+                [self.base_url + "/v1"]
+                if self.base_url.rsplit("/", 1)[-1].lower()
+                not in ("v1", "v2", "v3", "beta", "openai") else []):
+            req = urllib.request.Request(
+                base + path, data=data,
+                headers={"Content-Type": "application/json",
+                         "Authorization": "Bearer " + self.api_key})
+            try:
+                resp = urllib.request.urlopen(req, timeout=self.timeout)
+                if base != self.base_url:
+                    self.base_url = base  # 记住纠正结果
+                return resp
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    last_err = e
+                    continue  # 试下一个 base 候选
+                raise
+        raise last_err
 
     def chat(self, system, messages, temperature=0.8, max_tokens=4000):
         payload = {
@@ -22,12 +60,7 @@ class OpenAICompatClient:
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
-        req = urllib.request.Request(
-            self.base_url + "/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json",
-                     "Authorization": "Bearer " + self.api_key})
-        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+        with self._post("/chat/completions", payload) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         self.last_usage = data.get("usage")
         return data["choices"][0]["message"]["content"]
@@ -41,13 +74,8 @@ class OpenAICompatClient:
             "max_tokens": max_tokens,
             "stream": True,
         }
-        req = urllib.request.Request(
-            self.base_url + "/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json",
-                     "Authorization": "Bearer " + self.api_key})
         self.last_usage = None
-        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+        with self._post("/chat/completions", payload) as resp:
             for raw_line in resp:
                 line = raw_line.decode("utf-8").strip()
                 if not line.startswith("data:"):
