@@ -219,7 +219,12 @@ async function send(){
         if(ev.type==="error"){holder.textContent="（错误）"+ev.message}
       }
     }
-    if(done){LASTRESULT=done;holder.innerHTML=esc(done.narrative)+metaOf(done);renderState(done);renderHits(done);renderStatusbar(done.statusbar);addSugg(done)}
+    if(done){
+      LASTRESULT=done;
+      holder.innerHTML=esc(done.narrative)+metaOf(done);
+      renderState(done);renderHits(done);renderStatusbar(done.statusbar);addSugg(done);
+      if(done.message_ids)lastMsgId=Math.max(lastMsgId,done.message_ids[1]||lastMsgId);
+    }
   }catch(e){holder.textContent="（请求失败）"+e}
 }
 function stripStatus(t){
@@ -237,8 +242,8 @@ function metaOf(r){
   return bits.length?`<div class="meta">${esc(bits.join(" · "))}</div>`:"";
 }
 function addSugg(r){
+  if(!r.suggestions||!r.suggestions.length)return;  // 空建议时保留旧选项，避免闪断
   const old=document.querySelector(".sugg");if(old)old.remove();
-  if(!r.suggestions||!r.suggestions.length)return;
   const d=document.createElement("div");d.className="sugg";
   d.innerHTML=r.suggestions.slice(0,3).map(s=>`<span onclick="useSugg(this)">${esc(s)}</span>`).join("");
   $("chat").appendChild(d);$("chat").scrollTop=1e9;

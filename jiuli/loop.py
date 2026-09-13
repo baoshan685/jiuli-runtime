@@ -314,9 +314,11 @@ class RPSession:
 
         # 状态栏在落库前抽取：存档正文保持干净（重载后不会混入状态块）
         narrative, statusbar = extract_statusbar(narrative)
+        msg_ids = None
         if record:
-            self.store.add_message(self.session_id, "user", user_input)
-            self.store.add_message(self.session_id, "assistant", narrative)
+            uid = self.store.add_message(self.session_id, "user", user_input)
+            aid = self.store.add_message(self.session_id, "assistant", narrative)
+            msg_ids = [uid, aid]
         self.store.set_state(self.session_id, self._state)
         facts = tail.get("memory_facts", []) if tail else []
         facts = facts or self.extractor(user_input + "\n" + narrative)
@@ -341,5 +343,6 @@ class RPSession:
             "mem_hits": len(prep["mem"]),
             "ctx_tokens_est": 0,  # 由调用方覆盖；非流式路径使用 prepare 结果
             "history_dropped": prep["dropped"],
+            "message_ids": msg_ids,
             "usage": getattr(self.llm, "last_usage", None),
         }

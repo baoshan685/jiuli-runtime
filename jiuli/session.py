@@ -176,11 +176,12 @@ class SessionStore:
 
     def add_message(self, session_id, role, content, kind="chat"):
         with self.lock:
-            self.conn.execute(
+            cur = self.conn.execute(
                 "INSERT INTO messages (session_id, role, content, created, kind) "
                 "VALUES (?,?,?,?,?)", (session_id, role, content, _now(), kind))
             self.conn.execute("UPDATE sessions SET updated=? WHERE id=?", (_now(), session_id))
             self.conn.commit()
+            return cur.lastrowid
 
     def last_message_info(self, session_id):
         """返回 (id, role, created, epoch) 或 None——供主动性调度器判断空闲。"""
