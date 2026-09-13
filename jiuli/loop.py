@@ -47,6 +47,13 @@ class CardPackage:
             (e["id"], e.get("content", ""))
             for e in self.retriever_entries_all()
         ]
+        # 检测卡片是否要求叙事状态栏（常驻或任意条目中声明了格式）
+        self.statusbar_entry_id = None
+        for e in self.retriever_entries_all():
+            c = e.get("content", "")
+            if "userStatusBlocks" in c or ("状态栏" in c and "标签" in c):
+                self.statusbar_entry_id = e["id"]
+                break
 
     def retriever_entries_all(self):
         """全部条目（含常驻），从 index+文件重建。"""
@@ -85,10 +92,15 @@ class RPSession:
         # 真实 LLM 时启用语义矛盾裁判；MockLLM 退回纯规则
         nli = None if type(self.llm).__name__ == "MockLLM" else _make_nli(llm)
         self.memory = MemoryStore(self.store, nli_check=nli)
+        instruction = DEFAULT_INSTRUCTION
+        if self.pkg.statusbar_entry_id:
+            instruction += ("\n本卡要求每轮输出状态栏：请严格按【设定·%s】给出的格式，"
+                            "在叙事正文之后、尾部块之前输出状态栏块，不得省略。"
+                            % self.pkg.statusbar_entry_id)
         self.assembler = ContextAssembler(
             persona=self.pkg.persona_text,
             state_line_fn=lambda: json.dumps(self.state, ensure_ascii=False),
-            instruction=DEFAULT_INSTRUCTION,
+            instruction=instruction,
             token_budget=token_budget)
         self.extractor = fact_extractor or heuristic_extract_facts
         if session_id is None:
@@ -100,6 +112,10 @@ class RPSession:
         self._state = self.store.get_state(self.session_id)
         self.last_warnings = []
         self._last_added_fact_ids = []  # 本会话累计新增的事实 id，供 reroll 撤回
+        self._sb_reminder = (
+            "（系统提醒：本轮也必须按【设定·%s】的格式，在叙事正文之后、"
+            "尾部块之前输出状态栏块）" % self.pkg.statusbar_entry_id
+        ) if self.pkg.statusbar_entry_id else ""
 
     @property
     def state(self):
@@ -155,14 +171,15 @@ class RPSession:
         yield {"type": "status", "wb_hits": prep["wb_hits"], "mem_hits": len(prep["mem"])}
         yield {"type": "ctx", "tokens": est_tokens(system)}
 
+        wire = user_input + self._sb_reminder
         def gen(max_tokens=4000):
             if hasattr(self.llm, "chat_stream"):
                 for piece in self.llm.chat_stream(
-                        system, [{"role": "user", "content": user_input}],
+                        system, [{"role": "user", "content": wire}],
                         max_tokens=max_tokens):
                     yield piece
             else:
-                yield self.llm.chat(system, [{"role": "user", "content": user_input}],
+                yield self.llm.chat(system, [{"role": "user", "content": wire}],
                                     max_tokens=max_tokens)
 
         raw_acc = []
@@ -179,7 +196,7 @@ class RPSession:
                 emitted = len(visible)
         if not got_any:
             # 空正文重试（不流式，直接整段）
-            raw = self.llm.chat(system, [{"role": "user", "content": user_input}],
+            raw = self.llm.chat(system, [{"role": "user", "content": wire}],
                                 max_tokens=6000)
             narrative, tail, warns = parse_output(raw)
             if narrative.strip():

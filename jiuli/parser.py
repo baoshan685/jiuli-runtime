@@ -28,6 +28,13 @@ def extract_statusbar(narrative):
     if not m:
         return text, None
     body = (m.group(2) if m.lastindex >= 2 else m.group(1)).strip()
+    # 状态栏格式常内嵌 ``` 围栏（酒馆卡模板），剥掉首尾围栏行
+    lines = body.splitlines()
+    if lines and lines[0].strip().startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].strip() == "```":
+        lines = lines[:-1]
+    body = "\n".join(lines).strip()
     if not body:
         return text, None
     clean = (text[:m.start()] + text[m.end():]).strip()
