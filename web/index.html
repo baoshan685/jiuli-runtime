@@ -214,13 +214,19 @@ async function send(){
         const payload=line.slice(5).trim();
         if(payload==="[DONE]")continue;
         const ev=JSON.parse(payload);
-        if(ev.type==="delta"){shown+=ev.text;holder.textContent=shown;$("chat").scrollTop=1e9}
+        if(ev.type==="delta"){shown+=ev.text;holder.textContent=stripStatus(shown);$("chat").scrollTop=1e9}
         if(ev.type==="done")done=ev.result;
         if(ev.type==="error"){holder.textContent="（错误）"+ev.message}
       }
     }
     if(done){LASTRESULT=done;holder.innerHTML=esc(done.narrative)+metaOf(done);renderState(done);renderHits(done);renderStatusbar(done.statusbar);addSugg(done)}
   }catch(e){holder.textContent="（请求失败）"+e}
+}
+function stripStatus(t){
+  t=t.replace(/<userStatusBlocks>[\s\S]*?<\/userStatusBlocks>/gi,"");
+  t=t.replace(/<(statusblock|statusbar)>[\s\S]*?<\/>/gi,"");
+  t=t.replace(/```status[\s\S]*$/i,"");
+  return t;
 }
 function metaOf(r){
   const bits=[];

@@ -6,7 +6,9 @@
 import json
 import re
 
-TAIL_RE = re.compile(r"```jiuli\s*(\{.*?\})\s*```", re.DOTALL)
+TAIL_RE = re.compile(r"```jiuli\s*(\{.*?\})\s*```", re.DOTALL | re.IGNORECASE)
+# 兜底：任意围栏，只要内容是合法 JSON 且含已知尾部键
+GENERIC_FENCE_RE = re.compile(r"```[a-zA-Z]*\s*(\{.*?\})\s*```", re.DOTALL)
 ALLOWED_KEYS = {"state_diff", "illustration", "memory_facts", "summary", "suggestions"}
 
 # 卡片自带的"叙事状态栏"（酒馆卡常见约定）+ 本运行时约定的 ```status 围栏
@@ -41,12 +43,28 @@ def extract_statusbar(narrative):
     return clean, body
 
 
-def parse_output(text):
-    """返回 (narrative, tail_dict_or_None, warnings)。"""
-    warnings = []
+def _find_tail(text):
+    """先按 ```jiuli 找；找不到时用通用围栏兜底（模型偶发写成 ```json 等）。"""
     m = None
     for m in TAIL_RE.finditer(text or ""):
         pass
+    if m:
+        return m
+    last = None
+    for gm in GENERIC_FENCE_RE.finditer(text or ""):
+        try:
+            obj = json.loads(gm.group(1))
+        except Exception:  # noqa: BLE001
+            continue
+        if isinstance(obj, dict) and (set(obj) & ALLOWED_KEYS):
+            last = gm
+    return last
+
+
+def parse_output(text):
+    """返回 (narrative, tail_dict_or_None, warnings)。"""
+    warnings = []
+    m = _find_tail(text or "")
     if not m:
         return (text or "").strip(), None, warnings
     narrative = (text[:m.start()] + text[m.end():]).strip()

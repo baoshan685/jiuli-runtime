@@ -103,6 +103,16 @@ def _make_nli(llm):
     return check
 
 
+TAIL_EXTRACT_PROMPT = (
+    "从下面的角色扮演叙事中提取记账信息，只输出一个 JSON 对象（放在 ```json 围栏中）。"
+    "字段：\n"
+    "- state_diff: 状态变化对象（键只能用给定变量；数值变量用 \"+N\"/\"-N\" 或直接数值）\n"
+    "- memory_facts: 本回合实际发生的、值得长期记住的事实数组（没有则 []）\n"
+    "- suggestions: 3 个后续剧情建议数组\n"
+    "不要输出叙事，不要解释。\n\n"
+    "当前状态变量: {vars}\n\n叙事：\n{narrative}"
+)
+
 class RPSession:
     def __init__(self, pkg_dir, llm, db_path, session_id=None,
                  token_budget=4000, fact_extractor=None, card_id=""):
@@ -134,10 +144,22 @@ class RPSession:
         self._state = self.store.get_state(self.session_id)
         self.last_warnings = []
         self._last_added_fact_ids = []  # 本会话累计新增的事实 id，供 reroll 撤回
-        self._sb_reminder = (
-            "（系统提醒：本轮也必须按【设定·%s】的格式，在叙事正文之后、"
-            "尾部块之前输出状态栏块）" % self.pkg.statusbar_entry_id
-        ) if self.pkg.statusbar_entry_id else ""
+        # 有原生状态栏格式的卡按卡要求输出；没有的卡输出简版状态栏
+        if self.pkg.statusbar_entry_id:
+            self._sb_reminder = (
+                "（系统提醒：本轮也必须按【设定·%s】的格式，在叙事正文之后、"
+                "尾部块之前输出状态栏块）" % self.pkg.statusbar_entry_id)
+            self._sb_instruction = (
+                "' + bs_n + '本卡要求每轮输出状态栏：请严格按【设定·%s】给出的格式，"
+                "在叙事正文之后、尾部块之前输出状态栏块，不得省略。"
+                % self.pkg.statusbar_entry_id)
+        else:
+            self._sb_reminder = (
+                "（系统提醒：叙事之后、尾部块之前，用 ```status 围栏输出一行式状态栏："
+                "好感度/心情/场景/她的状态，各占一行，简洁不啰嗦）")
+            self._sb_instruction = (
+                "' + bs_n + '每轮在叙事正文之后、尾部块之前，输出一个 ```status 围栏状态栏，"
+                "包含：好感度、心情、场景、角色当前状态，各占一行，简洁。")
 
     @property
     def state(self):
@@ -167,10 +189,11 @@ class RPSession:
     def _turn(self, user_input, record=True):
         system, prep = self._prepare(user_input)
         self.last_warnings = []
-        raw = self.llm.chat(system, [{"role": "user", "content": user_input}])
+        wire = user_input + self._sb_reminder
+        raw = self.llm.chat(system, [{"role": "user", "content": wire}])
         narrative, tail, warns = parse_output(raw)
         if not narrative.strip():
-            raw = self.llm.chat(system, [{"role": "user", "content": user_input},
+            raw = self.llm.chat(system, [{"role": "user", "content": wire},
                 {"role": "assistant", "content": raw[-400:]},
                 {"role": "user", "content": "你的回复缺少叙事正文。请重新输出："
                  "只输出叙事正文，尾部块保持不变。"}], max_tokens=6000)
@@ -178,6 +201,7 @@ class RPSession:
             if not narrative.strip():
                 self.last_warnings.append("模型两次返回空正文")
         self.last_warnings.extend(warns)
+        tail = self._ensure_tail(narrative, tail)
         result = self._finalize(user_input, narrative, tail, prep, record=record)
         result["ctx_tokens_est"] = est_tokens(system)
         return result
@@ -232,6 +256,7 @@ class RPSession:
         raw = "".join(raw_acc)
         narrative, tail, warns = parse_output(raw)
         self.last_warnings.extend(warns)
+        tail = self._ensure_tail(narrative, tail)
         result = self._finalize(user_input, narrative, tail, prep, record=record)
         yield {"type": "done", "result": result}
 
@@ -253,6 +278,24 @@ class RPSession:
                 "dropped": dropped}
         return system, prep
 
+    def _ensure_tail(self, narrative, tail):
+        """尾部块缺失时的兜底：一次廉价补取调用，恢复记账。"""
+        if tail is not None or not narrative.strip():
+            return tail
+        try:
+            prompt = TAIL_EXTRACT_PROMPT.format(
+                vars=json.dumps(self._state, ensure_ascii=False),
+                narrative=narrative[:3000])
+            raw = self.llm.chat(prompt, [{"role": "user", "content": "[提取]"}],
+                                temperature=0.0, max_tokens=1200)
+            _, t2, _ = parse_output(raw)
+            if t2:
+                self.last_warnings.append("尾部块缺失，已自动补取记账")
+                return t2
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
     def _finalize(self, user_input, narrative, tail, prep, record=True):
         applied, rejected, illustration, suggestions = {}, [], None, []
         if tail:
@@ -266,6 +309,8 @@ class RPSession:
             if tail.get("summary"):
                 self.store.set_summary(self.session_id, str(tail["summary"]))
 
+        # 状态栏在落库前抽取：存档正文保持干净（重载后不会混入状态块）
+        narrative, statusbar = extract_statusbar(narrative)
         if record:
             self.store.add_message(self.session_id, "user", user_input)
             self.store.add_message(self.session_id, "assistant", narrative)
@@ -276,7 +321,6 @@ class RPSession:
             stats = self.memory.add(self.session_id, facts, context=user_input)
             self._last_added_fact_ids.extend(stats.get("added_ids", []))
 
-        narrative, statusbar = extract_statusbar(narrative)
         sm = self.pkg.state_machine
         return {
             "narrative": narrative,
