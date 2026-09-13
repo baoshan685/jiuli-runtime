@@ -1,0 +1,102 @@
+[
+ {
+  "card": "rp-傲娇大小姐凌夜",
+  "package_built": true,
+  "worldbook_entries": 7,
+  "nonconstant_entries": 4,
+  "mock_turn_ok": true,
+  "ctx_est": 194,
+  "annotated_recall5": 1.0,
+  "annotated_n": 5
+ },
+ {
+  "card": "rp-八等分的群友",
+  "package_built": true,
+  "worldbook_entries": 16,
+  "nonconstant_entries": 14,
+  "mock_turn_ok": true,
+  "ctx_est": 261,
+  "annotated_recall5": 1.0,
+  "annotated_n": 10
+ },
+ {
+  "card": "rp-兽血沸腾",
+  "package_built": true,
+  "worldbook_entries": 10,
+  "nonconstant_entries": 10,
+  "mock_turn_ok": true,
+  "ctx_est": 192,
+  "annotated_recall5": 1.0,
+  "annotated_n": 5
+ },
+ {
+  "card": "rp-出云国",
+  "package_built": true,
+  "worldbook_entries": 15,
+  "nonconstant_entries": 3,
+  "mock_turn_ok": true,
+  "ctx_est": 267
+ },
+ {
+  "card": "rp-大夏王朝",
+  "package_built": true,
+  "worldbook_entries": 13,
+  "nonconstant_entries": 3,
+  "mock_turn_ok": true,
+  "ctx_est": 192,
+  "annotated_recall5": 1.0,
+  "annotated_n": 4
+ },
+ {
+  "card": "rp-大秦纵横",
+  "package_built": true,
+  "worldbook_entries": 25,
+  "nonconstant_entries": 21,
+  "mock_turn_ok": true,
+  "ctx_est": 496,
+  "annotated_recall5": 0.667,
+  "annotated_n": 12
+ },
+ {
+  "card": "rp-天罗宫",
+  "package_built": true,
+  "worldbook_entries": 6,
+  "nonconstant_entries": 4,
+  "mock_turn_ok": true,
+  "ctx_est": 192
+ },
+ {
+  "card": "rp-母狗学姐白姝颜",
+  "package_built": true,
+  "worldbook_entries": 1,
+  "nonconstant_entries": 0,
+  "mock_turn_ok": true,
+  "ctx_est": 194
+ },
+ {
+  "card": "rp-清漪映雪",
+  "package_built": true,
+  "worldbook_entries": 33,
+  "nonconstant_entries": 22,
+  "mock_turn_ok": true,
+  "ctx_est": 223,
+  "annotated_recall5": 1.0,
+  "annotated_n": 6
+ },
+ {
+  "card": "rp-色色任务系统",
+  "package_built": true,
+  "worldbook_entries": 12,
+  "nonconstant_entries": 0,
+  "mock_turn_ok": true,
+  "ctx_est": 193
+ },
+ {
+  "card": "rp-茱莉娅和艾丽卡",
+  "package_built": true,
+  "worldbook_entries": 10,
+  "nonconstant_entries": 10,
+  "mock_turn_ok": true,
+  "ctx_est": 194
+ }
+]
