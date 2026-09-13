@@ -29,9 +29,12 @@ button.primary{background:var(--acc);border-color:var(--acc);color:#141414;font-
 .msg.user{align-self:flex-end;background:#2b3a52}
 .msg.char{align-self:flex-start;background:var(--card);border:1px solid var(--line)}
 .meta{font-size:11px;color:var(--dim);margin-top:6px}
-.sugg{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-.sugg span{font-size:12px;border:1px solid var(--line);border-radius:20px;padding:4px 12px;cursor:pointer;color:var(--acc2)}
-.sugg span:hover{border-color:var(--acc2)}
+.sugg{border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-top:10px;background:var(--card)}
+.sugg-title{font-size:13px;font-weight:600;margin-bottom:6px}
+.sugg-item{font-size:13px;padding:4px 0;cursor:pointer;color:var(--fg)}
+.sugg-item:hover{color:var(--acc2)}
+.sugg-item b{color:var(--acc);margin-right:6px;font-weight:700}
+.sugg-footer{font-size:11px;color:var(--dim);margin-top:6px;font-style:italic}
 #inputbar{display:flex;gap:10px;padding:14px 8%;border-top:1px solid var(--line)}
 #inp{flex:1;background:var(--card);border:1px solid var(--line);border-radius:10px;color:var(--fg);padding:11px 14px;font-size:15px;resize:none;height:52px;font-family:inherit}
 .right h3{font-size:13px;color:var(--dim);margin:12px 0 6px;font-weight:600}
@@ -244,8 +247,11 @@ function metaOf(r){
 function addSugg(r){
   if(!r.suggestions||!r.suggestions.length)return;  // 空建议时保留旧选项，避免闪断
   const old=document.querySelector(".sugg");if(old)old.remove();
+  const letters=["A","B","C","D"];
   const d=document.createElement("div");d.className="sugg";
-  d.innerHTML=r.suggestions.slice(0,3).map(s=>`<span onclick="useSugg(this)">${esc(s)}</span>`).join("");
+  d.innerHTML='<div class="sugg-title">接下来可以：</div>'
+    + r.suggestions.slice(0,4).map((s,i)=>`<div class="sugg-item" onclick="useSugg(this)"><b>${letters[i]}.</b>${esc(s)}</div>`).join("")
+    + '<div class="sugg-footer">也可以自由输入你想做的事</div>';
   $("chat").appendChild(d);$("chat").scrollTop=1e9;
 }
 function useSugg(el){$("inp").value=el.textContent;$("inp").focus()}
