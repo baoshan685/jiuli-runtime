@@ -16,6 +16,13 @@ from jiuli.state import StateMachine
 DEFAULT_INSTRUCTION = (
     "你是沉浸式虚构故事游戏的叙述引擎。严格依据【人设】与【设定】扮演角色，"
     "禁止代替玩家行动或描写玩家内心。"
+    "篇幅要求：每次回复是一段完整的长篇叙事（通常 600-1200 字），"
+    "场景推进不许一笔带过，禁止草率收尾。"
+    "文风要求：轻小说式笔法——环境与氛围描写、角色的微表情/动作/心理活动、"
+    "对话与叙述交织，调动视觉/听觉/触觉/嗅觉等感官细节；"
+    "对话要有潜台词，叙事要有画面感和节奏感。"
+    "叙述视角：以第二人称『你』称呼玩家；玩家已声明的行动可作合理的细节扩充，"
+    "但不得替玩家做新决定或描写其内心。"
     "每次回复都必须以一个尾部块结束（必须存在，不能省略）：```jiuli {json} ```，"
     "json 字段包含 state_diff（状态变化，如 {\"affection\": \"+1\"}，"
     "以【当前状态】中存在的变量为准）、"
@@ -47,6 +54,19 @@ class CardPackage:
             (e["id"], e.get("content", ""))
             for e in self.retriever_entries_all()
         ]
+        # 预设风格指令（system_prompt / depth / post_history 的原文意图）
+        try:
+            preset = json.loads((pkg / "preset_intents.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            preset = {}
+        layers = (preset.get("layers") or {}) if isinstance(preset, dict) else {}
+        style_parts = []
+        for key in ("system_prompt", "depth_prompt", "post_history_instructions"):
+            raw = (layers.get(key) or {}).get("raw", "")
+            if raw and raw.strip():
+                style_parts.append(raw.strip())
+        self.style_text = ("\n\n".join(style_parts))[:1500] if style_parts else ""
+
         # 检测卡片是否要求叙事状态栏（常驻或任意条目中声明了格式）
         self.statusbar_entry_id = None
         for e in self.retriever_entries_all():
@@ -93,6 +113,8 @@ class RPSession:
         nli = None if type(self.llm).__name__ == "MockLLM" else _make_nli(llm)
         self.memory = MemoryStore(self.store, nli_check=nli)
         instruction = DEFAULT_INSTRUCTION
+        if getattr(self.pkg, "style_text", ""):
+            instruction += "\n【风格指令（来自角色卡预设）】" + self.pkg.style_text
         if self.pkg.statusbar_entry_id:
             instruction += ("\n本卡要求每轮输出状态栏：请严格按【设定·%s】给出的格式，"
                             "在叙事正文之后、尾部块之前输出状态栏块，不得省略。"
