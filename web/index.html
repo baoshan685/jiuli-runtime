@@ -250,7 +250,7 @@ function addSugg(r){
   const letters=["A","B","C","D"];
   const d=document.createElement("div");d.className="sugg";
   d.innerHTML='<div class="sugg-title">接下来可以：</div>'
-    + r.suggestions.slice(0,4).map((s,i)=>`<div class="sugg-item" onclick="useSugg(this)"><b>${letters[i]}.</b>${esc(s)}</div>`).join("")
+    + r.suggestions.slice(0,4).map((s,i)=>`<div class="sugg-item" onclick="useSugg(this)"><b>${letters[i]}.</b>${esc(String(s).replace(/^\s*[A-D][.、:：]\s*/,""))}</div>`).join("")
     + '<div class="sugg-footer">也可以自由输入你想做的事</div>';
   $("chat").appendChild(d);$("chat").scrollTop=1e9;
 }
