@@ -1,16 +1,15 @@
-# 酒醴 Web UI（Docker）
+# 酒醴 Web UI（Docker，自包含：使用内置演示卡）
 # 用法：
 #   docker compose up -d          # 打开 http://127.0.0.1:8770
-#   挂载你的卡片语义包到 /app/pkg
+#   接真实模型：在 UI「模型设置」里热配置，或改 command 加 --api-base/--api-key/--model
 services:
   jiuli:
     image: python:3.12-slim
     working_dir: /app
     volumes:
-      - ../jiuli-runtime:/app
-      - ../jiuli-real-test/pkg:/app/pkg
+      - ./:/app
       - jiuli-data:/app/data
-    command: python -m jiuli.server --pkg /app/pkg --db /app/data/jiuli.db --host 0.0.0.0 --port 8770 --mock
+    command: python -m jiuli.server --pkg /app/examples/demo-pkg --db /app/data/jiuli.db --host 0.0.0.0 --port 8770 --mock
     ports:
       - "8770:8770"
     restart: unless-stopped

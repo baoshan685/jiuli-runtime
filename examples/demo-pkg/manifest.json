@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0.0",
+  "generator": "builtin-demo",
+  "generated_at": "2026-09-13T00:00:00+00:00",
+  "source": {
+    "spec": "v2",
+    "spec_version": "chara_card_v2",
+    "name": "小铃"
+  },
+  "skill_name": "rp-demo-xiaoling",
+  "counts": {
+    "worldbook": 4,
+    "worldbook_constant": 1,
+    "routes": 1,
+    "state_variables": 2
+  }
+}

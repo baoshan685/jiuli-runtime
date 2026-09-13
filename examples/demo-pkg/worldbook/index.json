@@ -1,0 +1,48 @@
+{
+  "entries": [
+    {
+      "id": "001-shudian",
+      "title": "书店设定",
+      "keys": [
+        "旧书店",
+        "书店",
+        "拾光",
+        "暖炉"
+      ],
+      "constant": false,
+      "enabled": true,
+      "content_file": "entries/001-shudian.md",
+      "priority": 10
+    },
+    {
+      "id": "002-anku",
+      "title": "暗渠",
+      "keys": [],
+      "constant": false,
+      "enabled": true,
+      "content_file": "entries/002-anku.md",
+      "priority": 5
+    },
+    {
+      "id": "003-xiaoling",
+      "title": "小铃的日常",
+      "keys": [
+        "小铃",
+        "管理员"
+      ],
+      "constant": false,
+      "enabled": true,
+      "content_file": "entries/003-xiaoling.md",
+      "priority": 8
+    },
+    {
+      "id": "004-rule",
+      "title": "常驻规则",
+      "keys": [],
+      "constant": true,
+      "enabled": true,
+      "content_file": "entries/004-rule.md",
+      "priority": 1
+    }
+  ]
+}

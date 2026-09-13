@@ -1,0 +1,23 @@
+{
+  "has_preset": false,
+  "needs_llm_distill": false,
+  "layers": {
+    "system_prompt": {
+      "raw": "",
+      "role": "identity_reset_and_rules"
+    },
+    "post_history_instructions": {
+      "raw": "",
+      "role": "output_control"
+    },
+    "depth_prompt": {
+      "raw": "",
+      "depth": 4,
+      "role": "system"
+    }
+  },
+  "constant_worldbook_ids": [
+    "004"
+  ],
+  "distill_targets": []
+}

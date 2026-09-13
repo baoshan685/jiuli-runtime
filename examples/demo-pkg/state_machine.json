@@ -1,0 +1,26 @@
+{
+  "variables": [
+    {
+      "name": "affection",
+      "label": "好感度",
+      "default": 0,
+      "min": 0,
+      "max": 100,
+      "explicit": true,
+      "description": "随互动自然变化"
+    },
+    {
+      "name": "mood",
+      "label": "心情",
+      "default": "平静",
+      "explicit": true,
+      "max_len": 8,
+      "description": "短词状态"
+    }
+  ],
+  "explicit_var_names": [
+    "affection",
+    "mood"
+  ],
+  "notes": "演示包：变量已显式启用。"
+}

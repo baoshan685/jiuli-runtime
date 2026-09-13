@@ -1,8 +1,8 @@
 # 酒醴（jiuli）运行时 v0.1 —— 开发者预览
 
 瘦上下文本地 RP 引擎。P2 验收数据见 `P2_ACCEPTANCE.md`（50 轮 ctx≤4K、状态零漂移、
-跨会话记忆、输入成本约为酒馆重度配置 1/5～1/10）；设计依据见 `../jiuli_development_plan.md`，
-检索算法依据见 `../p0-retrieval-exp/REPORT.md`。
+跨会话记忆、输入成本约为酒馆重度配置 1/5～1/10）；设计依据见 [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md)，
+检索算法依据见 [docs/P0_RETRIEVAL_REPORT.md](docs/P0_RETRIEVAL_REPORT.md)。
 
 ## 定位（v0.1 已实现 / 未实现）
 
