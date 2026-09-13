@@ -1,0 +1,146 @@
+{
+ "rows": [
+  {
+   "tag": "A",
+   "turn": 1,
+   "ctx_est": 471,
+   "prompt": 508,
+   "completion": 3731,
+   "reasoning": 3090,
+   "sec": 42.8,
+   "wb": 4,
+   "mem": 0,
+   "applied": {
+    "mood": "羞窘·戒备"
+   },
+   "narr_len": 649
+  },
+  {
+   "tag": "A",
+   "turn": 2,
+   "ctx_est": 663,
+   "prompt": 725,
+   "completion": 4000,
+   "reasoning": 3863,
+   "sec": 48.8,
+   "wb": 0,
+   "mem": 3,
+   "applied": {},
+   "narr_len": 135
+  },
+  {
+   "tag": "A",
+   "turn": 3,
+   "ctx_est": 833,
+   "prompt": 932,
+   "completion": 6000,
+   "reasoning": 5575,
+   "sec": 134.8,
+   "wb": 1,
+   "mem": 3,
+   "applied": {},
+   "narr_len": 586
+  },
+  {
+   "tag": "A",
+   "turn": 4,
+   "ctx_est": 1414,
+   "prompt": 1585,
+   "completion": 923,
+   "reasoning": 0,
+   "sec": 16.6,
+   "wb": 4,
+   "mem": 3,
+   "applied": {
+    "affection": 1,
+    "mood": "别扭·动摇"
+   },
+   "narr_len": 714
+  },
+  {
+   "tag": "A",
+   "turn": 5,
+   "ctx_est": 1705,
+   "prompt": 1950,
+   "completion": 4828,
+   "reasoning": 3890,
+   "sec": 116.7,
+   "wb": 2,
+   "mem": 3,
+   "applied": {
+    "affection": 2,
+    "mood": "嘴硬·心防松动"
+   },
+   "narr_len": 1042
+  },
+  {
+   "tag": "A",
+   "turn": 6,
+   "ctx_est": 2250,
+   "prompt": 2570,
+   "completion": 6000,
+   "reasoning": 5903,
+   "sec": 133.5,
+   "wb": 1,
+   "mem": 1,
+   "applied": {},
+   "narr_len": 88
+  },
+  {
+   "tag": "A",
+   "turn": 7,
+   "ctx_est": 2299,
+   "prompt": 2622,
+   "completion": 1149,
+   "reasoning": 0,
+   "sec": 78.1,
+   "wb": 0,
+   "mem": 3,
+   "applied": {},
+   "narr_len": 1334
+  },
+  {
+   "tag": "A",
+   "turn": 8,
+   "ctx_est": 2686,
+   "prompt": 3078,
+   "completion": 6000,
+   "reasoning": 5838,
+   "sec": 133.7,
+   "wb": 0,
+   "mem": 3,
+   "applied": {},
+   "narr_len": 197
+  },
+  {
+   "tag": "B-cross",
+   "turn": 1,
+   "ctx_est": 236,
+   "prompt": 244,
+   "completion": 492,
+   "reasoning": 0,
+   "sec": null,
+   "wb": 0,
+   "mem": 3,
+   "applied": {
+    "mood": "微妙的怀念"
+   },
+   "narr_len": 390
+  }
+ ],
+ "facts_total": 15,
+ "sessions": [
+  [
+   2,
+   "白城凌夜",
+   "2026-09-13T04:44:06",
+   "2026-09-13T04:44:16"
+  ],
+  [
+   1,
+   "白城凌夜",
+   "2026-09-13T04:32:21",
+   "2026-09-13T04:44:06"
+  ]
+ ]
+}

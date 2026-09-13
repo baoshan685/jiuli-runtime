@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>酒醴 · 本地 RP 引擎</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--bg:#0f1115;--panel:#171a21;--card:#1d212b;--line:#2a2f3c;--fg:#e6e9f0;--dim:#8b93a7;--acc:#d98a5f;--acc2:#7fb08a}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.7 "Microsoft YaHei",system-ui,sans-serif;height:100vh;display:flex;overflow:hidden}
+aside{width:230px;background:var(--panel);border-right:1px solid var(--line);padding:14px;display:flex;flex-direction:column;gap:10px}
+main{flex:1;display:flex;flex-direction:column;min-width:0}
+.right{width:250px;background:var(--panel);border-left:1px solid var(--line);padding:14px;overflow-y:auto}
+h1{font-size:17px;display:flex;align-items:center;gap:8px}
+h1 .sub{font-size:11px;color:var(--dim)}
+button{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:13px}
+button:hover{border-color:var(--acc)}
+button.primary{background:var(--acc);border-color:var(--acc);color:#141414;font-weight:600}
+.sess{padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--dim);border:1px solid transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sess:hover,.sess.on{background:var(--card);color:var(--fg);border-color:var(--line)}
+#chat{flex:1;overflow-y:auto;padding:22px 8%;display:flex;flex-direction:column;gap:16px}
+.msg{max-width:88%;padding:12px 16px;border-radius:14px;white-space:pre-wrap;word-break:break-word}
+.msg.user{align-self:flex-end;background:#2b3a52}
+.msg.char{align-self:flex-start;background:var(--card);border:1px solid var(--line)}
+.meta{font-size:11px;color:var(--dim);margin-top:6px}
+.sugg{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.sugg span{font-size:12px;border:1px solid var(--line);border-radius:20px;padding:4px 12px;cursor:pointer;color:var(--acc2)}
+.sugg span:hover{border-color:var(--acc2)}
+#inputbar{display:flex;gap:10px;padding:14px 8%;border-top:1px solid var(--line)}
+#inp{flex:1;background:var(--card);border:1px solid var(--line);border-radius:10px;color:var(--fg);padding:11px 14px;font-size:15px;resize:none;height:52px;font-family:inherit}
+.right h3{font-size:13px;color:var(--dim);margin:12px 0 6px;font-weight:600}
+.state-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0}
+.state-row b{color:var(--acc);font-weight:600;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tag{font-size:11px;color:var(--dim);background:var(--card);border-radius:6px;padding:2px 8px;display:inline-block;margin:2px}
+img.illu{max-width:100%;border-radius:10px;border:1px solid var(--line);margin-top:6px}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center}
+#modal .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;width:420px}
+#modal input{width:100%;background:var(--card);border:1px solid var(--line);border-radius:8px;color:var(--fg);padding:9px 12px;margin:6px 0 12px;font-size:13px}
+label{font-size:12px;color:var(--dim)}
+.row2{display:flex;gap:8px;flex-wrap:wrap}
+#gallery{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);overflow-y:auto;padding:40px;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+#gallery img{width:100%;border-radius:10px}
+.toolbar{display:flex;gap:8px;align-items:center}
+.spacer{flex:1}
+.kv{font-size:12px;color:var(--dim)}
+</style>
+</head>
+<body>
+<aside>
+  <h1>🍶 酒醴 <span class="sub" id="ver">v0.1</span></h1>
+  <button class="primary" onclick="newSession()">＋ 新的对话</button>
+  <button onclick="forkSession()">⑂ 从当前位置分叉</button>
+  <button onclick="openGallery()">🖼 插图画廊</button>
+  <div class="spacer"></div>
+  <h3>存档</h3>
+  <div id="sesslist"></div>
+  <div class="spacer"></div>
+  <button onclick="openModal()">⚙ 模型设置</button>
+</aside>
+
+<main>
+  <div id="chat"></div>
+  <div id="inputbar">
+    <textarea id="inp" placeholder="输入你的行动或对话…（Enter 发送，Shift+Enter 换行）"></textarea>
+    <button class="primary" style="height:52px" onclick="send()">发送</button>
+  </div>
+</main>
+
+<div class="right">
+  <h3>角色</h3><div class="kv" id="charinfo"></div>
+  <h3>状态面板</h3><div id="statepanel" class="kv">（尚无状态变化）</div>
+  <h3>本回合命中</h3><div id="hits" class="kv">—</div>
+  <h3>场景插图</h3><div id="illu"></div>
+  <h3>主动性</h3><button style="width:100%" onclick="triggerProactive()">⚡ 让角色现在就找你</button><div class="kv" id="proactiveinfo"></div>
+</div>
+
+<div id="modal"><div class="box">
+  <h1 style="margin-bottom:10px">⚙ 模型设置</h1>
+  <label>API Base（OpenAI 兼容）</label><input id="m_base" placeholder="https://api.xxx.com/v1">
+  <label>API Key</label><input id="m_key" type="password">
+  <label>模型</label><input id="m_model" placeholder="模型名">
+  <div class="row2">
+    <button onclick="probeOllama()">探测本地 Ollama</button>
+    <button onclick="testModel()">测试连接</button>
+    <div class="spacer"></div>
+    <button class="primary" onclick="saveModel()">保存</button>
+    <button onclick="closeModal()">关闭</button>
+  </div>
+  <div id="ollalist" class="row2" style="margin-top:10px"></div>
+  <div id="testres" class="kv" style="margin-top:10px"></div>
+</div></div>
+
+<div id="gallery"></div>
+
+<script>
+let SID=null, LASTRESULT=null, lastMsgId=0;
+const $=id=>document.getElementById(id);
+const esc=s=>(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;");
+async function jget(u){const r=await fetch(u);return r.json()}
+async function jpost(u,b){const r=await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b||{})});return r.json()}
+
+async function init(){
+  const info=await jget("/api/info");
+  $("charinfo").textContent=(info.persona.name||"")+" · "+(info.persona.bio||"");
+  const s=await jget("/api/sessions");
+  SID=s.current; renderSessions(s.sessions);
+  await loadMessages();
+}
+function renderSessions(list){
+  $("sesslist").innerHTML=(list||[]).map(x=>
+    `<div class="sess ${x[0]==SID?"on":""}" onclick="switchTo(${x[0]})">#${x[0]} ${esc(x[1]||"（未命名）")}</div>`).join("");
+}
+async function switchTo(id){SID=id;await loadMessages();refreshSessions()}
+async function refreshSessions(){const s=await jget("/api/sessions");renderSessions(s.sessions)}
+async function newSession(){const r=await jpost("/api/sessions",{});SID=r.session_id;await loadMessages();refreshSessions()}
+async function forkSession(){const r=await jpost("/api/fork",{session_id:SID});if(r.session_id){SID=r.session_id;await loadMessages();refreshSessions()}}
+
+function bubble(role,text,meta){
+  const d=document.createElement("div");
+  d.className="msg "+(role==="user"?"user":"char");
+  d.innerHTML=esc(text)+(meta?`<div class="meta">${meta}</div>`:"");
+  $("chat").appendChild(d);$("chat").scrollTop=1e9;return d;
+}
+async function loadMessages(){
+  const m=await jget("/api/messages?session_id="+SID);
+  $("chat").innerHTML="";
+  for(const x of m.messages) bubble(x.role,x.content,x.kind==="proactive"?"（主动发来）":null);
+  lastMsgId=m.messages.length?m.messages[m.messages.length-1].id:0;
+  const st=await jget("/api/state?session_id="+SID);
+  renderState(st.state);
+  loadProactiveInfo();
+}
+async function loadProactiveInfo(){
+  const c=await jget("/api/proactive/config");
+  $("proactiveinfo").textContent=`每日上限 ${c.config.max_per_day} · 已用 ${c.used_today} · 空闲阈值 ${(c.config.idle_seconds/3600).toFixed(1)}h`;
+}
+async function pollNew(){
+  if(!SID)return;
+  const r=await jget("/api/proactive/poll?session_id="+SID+"&after_id="+lastMsgId);
+  for(const x of r.messages){
+    if(x.role!=="assistant"&&x.role!=="user")continue;
+    bubble(x.role,x.content,x.kind==="proactive"?"（主动发来）":null);
+    lastMsgId=Math.max(lastMsgId,x.id);
+  }
+  if(r.messages.length){renderState(r.state);$("chat").scrollTop=1e9}
+}
+async function triggerProactive(){
+  const r=await jpost("/api/proactive/trigger",{session_id:SID});
+  const ev=(r.events||[]).find(e=>e.kind==="proactive");
+  if(ev){bubble("char",ev.message,"（主动发来）");lastMsgId++;}
+  else $("proactiveinfo").textContent="这次没有触发（未到空闲阈值或配额用完）";
+  loadProactiveInfo();
+}
+setInterval(pollNew,15000);
+function renderState(st){
+  const e=Object.entries(st||{});
+  $("statepanel").innerHTML=e.length?e.map(([k,v])=>`<div class="state-row"><span>${esc(k)}</span><b>${esc(String(v))}</b></div>`).join(""):"（尚无状态变化）";
+}
+function renderHits(r){
+  $("hits").innerHTML=`ctx≈${r.ctx_tokens_est} tok · wb: ${(r.wb_hits||[]).map(h=>`<span class="tag">${esc(h)}</span>`).join("")} · mem:${r.mem_hits}`;
+  $("illu").innerHTML=r.illustration?`<img class="illu" src="/api/illustration/file?name=${encodeURIComponent(r.illustration)}" onerror="this.style.display='none'">`:"";
+}
+async function send(){
+  const inp=$("inp");const text=inp.value.trim();if(!text)return;inp.value="";
+  bubble("user",text);
+  const holder=bubble("char","…");
+  try{
+    const resp=await fetch("/api/turn_stream",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({session_id:SID,input:text})});
+    const reader=resp.body.getReader(),dec=new TextDecoder();
+    let buf="",shown="",done=null;
+    while(true){
+      const {value,done:fin}=await reader.read();if(fin)break;
+      buf+=dec.decode(value,{stream:true});
+      let idx;
+      while((idx=buf.indexOf("\n\n"))>=0){
+        const line=buf.slice(0,idx).trim();buf=buf.slice(idx+2);
+        if(!line.startsWith("data:"))continue;
+        const payload=line.slice(5).trim();
+        if(payload==="[DONE]")continue;
+        const ev=JSON.parse(payload);
+        if(ev.type==="delta"){shown+=ev.text;holder.textContent=shown;$("chat").scrollTop=1e9}
+        if(ev.type==="done")done=ev.result;
+        if(ev.type==="error"){holder.textContent="（错误）"+ev.message}
+      }
+    }
+    if(done){LASTRESULT=done;holder.innerHTML=esc(done.narrative)+metaOf(done);renderState(done.state);renderHits(done);addSugg(done)}
+  }catch(e){holder.textContent="（请求失败）"+e}
+}
+function metaOf(r){
+  const bits=[];
+  if(Object.keys(r.applied||{}).length)bits.push("状态: "+JSON.stringify(r.applied));
+  if(r.rejected&&r.rejected.length)bits.push("被拒: "+JSON.stringify(r.rejected));
+  if(r.warnings&&r.warnings.length)bits.push("⚠ "+r.warnings.length);
+  return bits.length?`<div class="meta">${esc(bits.join(" · "))}</div>`:"";
+}
+function addSugg(r){
+  const old=document.querySelector(".sugg");if(old)old.remove();
+  if(!r.suggestions||!r.suggestions.length)return;
+  const d=document.createElement("div");d.className="sugg";
+  d.innerHTML=r.suggestions.slice(0,3).map(s=>`<span onclick="useSugg(this)">${esc(s)}</span>`).join("");
+  $("chat").appendChild(d);$("chat").scrollTop=1e9;
+}
+function useSugg(el){$("inp").value=el.textContent;$("inp").focus()}
+async function reroll(){
+  if(!SID)return;
+  const r=await jpost("/api/reroll",{session_id:SID});
+  if(r.error){alert(r.error);return}
+  await loadMessages();LASTRESULT=r.result;renderState(r.result.state);renderHits(r.result);addSugg(r.result);
+}
+async function openGallery(){
+  const g=$("gallery");g.style.display="grid";g.innerHTML="<div class='kv'>加载中…</div>";
+  const data=await jget("/api/illustrations");
+  const files=data.local_files||[];
+  g.innerHTML=files.length?files.map(f=>`<img src="/api/illustration/file?name=${encodeURIComponent(f)}" onclick="this.parentNode.style.display='none'">`).join(""):"<div class='kv'>本地还没有插图。运行 assets/download_illustrations.sh 下载后刷新。</div>";
+  g.onclick=()=>g.style.display="none";
+}
+
+/* ── 模型设置 ── */
+function openModal(){$("modal").style.display="flex"}
+function closeModal(){$("modal").style.display="none"}
+async function saveModel(){
+  const r=await jpost("/api/model",{base:$("m_base").value.trim(),key:$("m_key").value.trim(),model:$("m_model").value.trim()});
+  $("testres").textContent=r.ok?"已保存（仅本次运行有效）":"失败: "+(r.error||"");
+}
+async function testModel(){
+  const r=await jpost("/api/model/test",{});
+  $("testres").textContent=r.ok?"连通 ✔ "+(r.reply||""):"失败: "+(r.error||JSON.stringify(r));
+}
+async function probeOllama(){
+  const r=await jget("/api/ollama");
+  $("ollalist").innerHTML=(r.models||[]).map(m=>`<span class="tag" style="cursor:pointer" onclick="$('m_base').value='http://127.0.0.1:11434/v1';$('m_model').value='${m}'">${esc(m)}</span>`).join("")||"未检测到本地 Ollama";
+}
+$("inp").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}});
+init();
+</script>
+</body>
+</html>

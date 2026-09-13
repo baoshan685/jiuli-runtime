@@ -1,0 +1,9 @@
+[project]
+name = "jiuli-runtime"
+version = "0.1.0"
+description = "酒醴 —— 瘦上下文本地角色扮演引擎（零第三方依赖）"
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
+
+[tool.setuptools]
+packages = ["jiuli"]
