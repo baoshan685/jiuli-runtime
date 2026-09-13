@@ -250,14 +250,17 @@ class RPSession:
             else:
                 self.last_warnings.append("模型两次返回空正文")
             self.last_warnings.extend(warns)
-            yield {"type": "done", "result": self._finalize(
-                user_input, narrative, tail, prep, record=record)}
+            done_result = self._finalize(
+                user_input, narrative, tail, prep, record=record)
+            done_result["ctx_tokens_est"] = est_tokens(system)
+            yield {"type": "done", "result": done_result}
             return
         raw = "".join(raw_acc)
         narrative, tail, warns = parse_output(raw)
         self.last_warnings.extend(warns)
         tail = self._ensure_tail(narrative, tail)
         result = self._finalize(user_input, narrative, tail, prep, record=record)
+        result["ctx_tokens_est"] = est_tokens(system)
         yield {"type": "done", "result": result}
 
     def _prepare(self, user_input):
