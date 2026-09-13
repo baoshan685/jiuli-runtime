@@ -255,10 +255,14 @@ class RPSession:
             self._last_added_fact_ids.extend(stats.get("added_ids", []))
 
         narrative, statusbar = extract_statusbar(narrative)
+        sm = self.pkg.state_machine
         return {
             "narrative": narrative,
             "statusbar": statusbar,
             "state": dict(self._state),
+            "state_display": sm.display_rows(self._state),
+            "applied_display": [[sm.label_of(k), v] for k, v in applied.items()
+                                if not sm._is_internal_key(k)],
             "applied": applied,
             "rejected": rejected,
             "illustration": illustration,

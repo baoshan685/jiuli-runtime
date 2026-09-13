@@ -27,6 +27,24 @@ class StateMachine:
     def initial_state(self):
         return {name: v["default"] for name, v in self.variables.items()}
 
+    @staticmethod
+    def _is_internal_key(key):
+        """MVU/机务变量（stat_data.*、带点路径等）不进人工面板。"""
+        return "." in key or key.startswith(("stat_data", "stat_", "display", "$"))
+
+    def display_rows(self, state):
+        """[(中文标签, 值)]：用 schema 的 label，隐藏 internal/机务键。"""
+        rows = []
+        for key, val in state.items():
+            meta = self.variables.get(key)
+            if (meta and meta.get("internal")) or self._is_internal_key(key):
+                continue
+            rows.append([(meta or {}).get("label") or key, val])
+        return rows
+
+    def label_of(self, key):
+        return (self.variables.get(key) or {}).get("label") or key
+
     def validate_and_apply(self, state, diff):
         """对模型提出的 state_diff 做校验，返回 (new_state, applied, rejected)。
 

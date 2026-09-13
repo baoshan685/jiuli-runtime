@@ -188,7 +188,8 @@ class Handler(BaseHTTPRequestHandler):
                                    "summary": s.store.get_summary(s.session_id)})
             if u.path == "/api/state":
                 s, _ = self.app.session(q.get("session_id", [None])[0])
-                return self._json({"session_id": s.session_id, "state": s.state})
+                return self._json({"session_id": s.session_id, "state": s.state,
+                                   "state_display": s.pkg.state_machine.display_rows(s.state)})
             if u.path == "/api/illustrations":
                 s, _ = self.app.session(q.get("session_id", [None])[0])
                 return self._json(self._illustration_map(s))
@@ -205,7 +206,8 @@ class Handler(BaseHTTPRequestHandler):
                 s, _ = self.app.session(q.get("session_id", [None])[0])
                 after = int(q.get("after_id", [0])[0])
                 return self._json({"messages": s.store.messages_after(s.session_id, after),
-                                   "state": s.state})
+                                   "state": s.state,
+                                   "state_display": s.pkg.state_machine.display_rows(s.state)})
             return self._json({"error": "not found"}, 404)
         except Exception as e:  # noqa: BLE001
             return self._json({"error": str(e)}, 500)

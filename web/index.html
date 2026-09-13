@@ -155,7 +155,7 @@ async function loadMessages(){
   for(const x of m.messages) bubble(x.role,x.content,x.kind==="proactive"?"（主动发来）":null);
   lastMsgId=m.messages.length?m.messages[m.messages.length-1].id:0;
   const st=await jget("/api/state?session_id="+SID);
-  renderState(st.state);
+  renderState(st);
   loadProactiveInfo();
 }
 async function loadProactiveInfo(){
@@ -170,7 +170,7 @@ async function pollNew(){
     bubble(x.role,x.content,x.kind==="proactive"?"（主动发来）":null);
     lastMsgId=Math.max(lastMsgId,x.id);
   }
-  if(r.messages.length){renderState(r.state);$("chat").scrollTop=1e9}
+  if(r.messages.length){renderState(r.state_display?r:r.state);$("chat").scrollTop=1e9}
 }
 async function triggerProactive(){
   const r=await jpost("/api/proactive/trigger",{session_id:SID});
@@ -181,8 +181,13 @@ async function triggerProactive(){
 }
 setInterval(pollNew,15000);
 function renderState(st){
-  const e=Object.entries(st||{});
-  $("statepanel").innerHTML=e.length?e.map(([k,v])=>`<div class="state-row"><span>${esc(k)}</span><b>${esc(String(v))}</b></div>`).join(""):"（尚无状态变化）";
+  let rows;
+  if (Array.isArray(st)) rows = st;
+  else if (st && Array.isArray(st.state_display)) { rows = st.state_display; if(!rows.length) rows=null; }
+  else rows = Object.entries(st||{});
+  $("statepanel").innerHTML=(rows&&rows.length)
+    ? rows.map(([k,v])=>`<div class="state-row"><span>${esc(String(k))}</span><b>${esc(String(v))}</b></div>`).join("")
+    : "（无数值状态；本卡状态见状态栏）";
 }
 function renderStatusbar(sb){
   $("statusbar").innerHTML=sb?esc(sb):"（本轮无状态栏输出）";
@@ -214,12 +219,13 @@ async function send(){
         if(ev.type==="error"){holder.textContent="（错误）"+ev.message}
       }
     }
-    if(done){LASTRESULT=done;holder.innerHTML=esc(done.narrative)+metaOf(done);renderState(done.state);renderHits(done);renderStatusbar(done.statusbar);addSugg(done)}
+    if(done){LASTRESULT=done;holder.innerHTML=esc(done.narrative)+metaOf(done);renderState(done);renderHits(done);renderStatusbar(done.statusbar);addSugg(done)}
   }catch(e){holder.textContent="（请求失败）"+e}
 }
 function metaOf(r){
   const bits=[];
-  if(Object.keys(r.applied||{}).length)bits.push("状态: "+JSON.stringify(r.applied));
+  if(r.applied_display&&r.applied_display.length)bits.push("状态: "+r.applied_display.map(([k,v])=>k+" "+v).join("，"));
+  else if(Object.keys(r.applied||{}).length)bits.push("状态: "+JSON.stringify(r.applied));
   if(r.rejected&&r.rejected.length)bits.push("被拒: "+JSON.stringify(r.rejected));
   if(r.warnings&&r.warnings.length)bits.push("⚠ "+r.warnings.length);
   return bits.length?`<div class="meta">${esc(bits.join(" · "))}</div>`:"";
@@ -236,7 +242,7 @@ async function reroll(){
   if(!SID)return;
   const r=await jpost("/api/reroll",{session_id:SID});
   if(r.error){alert(r.error);return}
-  await loadMessages();LASTRESULT=r.result;renderState(r.result.state);renderHits(r.result);addSugg(r.result);
+  await loadMessages();LASTRESULT=r.result;renderState(r.result);renderHits(r.result);addSugg(r.result);
 }
 async function openGallery(){
   const g=$("gallery");g.style.display="grid";g.innerHTML="<div class='kv'>加载中…</div>";
